@@ -113,13 +113,19 @@
     display:flex;align-items:center;justify-content:space-between;
     padding:14px 32px;
     color:var(--paper);
-    transition:background .35s ease, color .35s ease, padding .35s ease;
+    transition:background .4s ease, color .4s ease, padding .4s ease,
+               top .4s ease, left .4s ease, right .4s ease,
+               border-radius .4s ease, box-shadow .4s ease, backdrop-filter .4s ease;
   }
   .topbar.scrolled{
-    background:var(--paper);
+    background:color-mix(in oklch, var(--paper) 82%, transparent);
+    backdrop-filter:blur(18px) saturate(1.4);
+    -webkit-backdrop-filter:blur(18px) saturate(1.4);
     color:var(--ink);
-    padding:10px 32px;
-    box-shadow:0 1px 0 var(--line);
+    padding:10px 24px;
+    top:12px;left:20px;right:20px;
+    border-radius:40px;
+    box-shadow:0 4px 32px oklch(0% 0 0 / .10), 0 1px 0 var(--line);
   }
   .topbar .left{display:flex;align-items:center;gap:24px;font-size:12px;letter-spacing:.04em}
   .topbar .left span{display:inline-flex;align-items:center;gap:8px;opacity:.9}
