@@ -987,5 +987,138 @@ document.documentElement.dataset.density = TWEAK_DEFAULTS.density;
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
 </script>
+
+<!-- ───────── ÉDITEUR INLINE ───────── -->
+<style>
+  #edit-toolbar{
+    position:fixed;bottom:80px;left:50%;transform:translateX(-50%);
+    display:flex;align-items:center;gap:10px;
+    background:oklch(18% 0.01 110);color:#fff;
+    padding:10px 18px;border-radius:40px;
+    box-shadow:0 8px 32px oklch(0% 0 0/.35);
+    z-index:9999;font-family:'Inter',sans-serif;font-size:13px;
+    transition:opacity .3s;
+  }
+  #edit-toolbar button{
+    cursor:pointer;border:none;border-radius:20px;
+    padding:6px 16px;font-size:12px;font-weight:500;letter-spacing:.04em;
+    transition:background .2s, transform .1s;
+  }
+  #edit-toolbar button:active{transform:scale(.96)}
+  #btn-toggle-edit{background:oklch(72% 0.14 45);color:#fff}
+  #btn-toggle-edit.active{background:oklch(55% 0.17 145);color:#fff}
+  #btn-download{background:oklch(38% 0.06 130);color:#fff}
+  #btn-undo{background:oklch(30% 0.01 110);color:#fff}
+  #edit-hint{opacity:.6;font-size:11px;white-space:nowrap}
+
+  body.edit-mode [data-editable]:hover{
+    outline:2px dashed oklch(72% 0.14 45);
+    outline-offset:3px;
+    cursor:text;
+    border-radius:3px;
+  }
+  body.edit-mode [data-editable]:focus{
+    outline:2px solid oklch(72% 0.14 45);
+    outline-offset:3px;
+    border-radius:3px;
+    background:oklch(100% 0 0/.06);
+  }
+  [data-editable]{caret-color:oklch(72% 0.14 45)}
+</style>
+
+<div id="edit-toolbar">
+  <button id="btn-toggle-edit">✏️ Éditer</button>
+  <span id="edit-hint" style="display:none">Cliquez sur un texte pour le modifier</span>
+  <button id="btn-undo" style="display:none">↩ Annuler</button>
+  <button id="btn-download" style="display:none">⬇️ Télécharger</button>
+</div>
+
+<script>
+(function(){
+  const toolbar   = document.getElementById('edit-toolbar');
+  const btnToggle = document.getElementById('btn-toggle-edit');
+  const btnUndo   = document.getElementById('btn-undo');
+  const btnDl     = document.getElementById('btn-download');
+  const hint      = document.getElementById('edit-hint');
+
+  let editMode = false;
+  let history  = [];
+
+  /* Tag les éléments éditables une fois React monté */
+  function tagEditables(){
+    const sel = 'h1,h2,h3,h4,h5,h6,p,span,a,li,blockquote,label';
+    document.querySelectorAll('#root ' + sel).forEach(el => {
+      if(!el.closest('[contenteditable]') && el.childElementCount === 0){
+        el.setAttribute('data-editable','');
+      }
+    });
+  }
+
+  /* Activer / désactiver le mode édition */
+  function toggleEdit(){
+    editMode = !editMode;
+    tagEditables();
+    document.body.classList.toggle('edit-mode', editMode);
+    btnToggle.textContent = editMode ? '✅ Terminer' : '✏️ Éditer';
+    btnToggle.classList.toggle('active', editMode);
+    hint.style.display  = editMode ? 'inline' : 'none';
+    btnUndo.style.display = editMode ? 'inline' : 'none';
+    btnDl.style.display   = editMode ? 'inline' : 'none';
+
+    document.querySelectorAll('[data-editable]').forEach(el => {
+      el.contentEditable = editMode ? 'true' : 'false';
+      if(editMode){
+        el.addEventListener('focus', saveSnapshot, {once:true});
+      }
+    });
+  }
+
+  function saveSnapshot(){
+    history.push(document.getElementById('root').innerHTML);
+    if(history.length > 30) history.shift();
+  }
+
+  btnToggle.addEventListener('click', toggleEdit);
+
+  btnUndo.addEventListener('click', () => {
+    if(history.length){
+      document.getElementById('root').innerHTML = history.pop();
+      tagEditables();
+      document.querySelectorAll('[data-editable]').forEach(el => {
+        el.contentEditable = 'true';
+        el.addEventListener('focus', saveSnapshot, {once:true});
+      });
+    }
+  });
+
+  btnDl.addEventListener('click', () => {
+    /* désactiver contenteditable avant l'export */
+    document.querySelectorAll('[data-editable]').forEach(el => {
+      el.contentEditable = 'false';
+      el.removeAttribute('data-editable');
+    });
+    document.body.classList.remove('edit-mode');
+
+    const html = '<!doctype html>\n' + document.documentElement.outerHTML;
+
+    /* remettre le mode édition */
+    setTimeout(()=>{
+      tagEditables();
+      document.body.classList.add('edit-mode');
+      document.querySelectorAll('[data-editable]').forEach(el=>{
+        el.contentEditable='true';
+        el.addEventListener('focus',saveSnapshot,{once:true});
+      });
+    }, 100);
+
+    const blob = new Blob([html], {type:'text/html'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'Saveurs-du-Brusc.html';
+    a.click();
+  });
+})();
+</script>
+
 </body>
 </html>
