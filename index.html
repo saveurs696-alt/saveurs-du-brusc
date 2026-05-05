@@ -1044,56 +1044,45 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
     padding:10px 18px;border-radius:40px;
     box-shadow:0 8px 32px oklch(0% 0 0/.35);
     z-index:9999;font-family:'Inter',sans-serif;font-size:13px;
-    transition:opacity .3s;
   }
   #edit-toolbar button{
     cursor:pointer;border:none;border-radius:20px;
     padding:6px 16px;font-size:12px;font-weight:500;letter-spacing:.04em;
-    transition:background .2s, transform .1s;
+    transition:background .2s,transform .1s;
   }
   #edit-toolbar button:active{transform:scale(.96)}
   #btn-toggle-edit{background:oklch(72% 0.14 45);color:#fff}
-  #btn-toggle-edit.active{background:oklch(55% 0.17 145);color:#fff}
+  #btn-toggle-edit.active{background:oklch(45% 0.17 145);color:#fff}
   #btn-download{background:oklch(38% 0.06 130);color:#fff}
   #btn-undo{background:oklch(30% 0.01 110);color:#fff}
   #edit-hint{opacity:.6;font-size:11px;white-space:nowrap}
 
   body.edit-mode [data-editable]:hover{
-    outline:2px dashed oklch(72% 0.14 45);
-    outline-offset:3px;cursor:text;border-radius:3px;
+    outline:2px dashed #f97316;outline-offset:2px;cursor:text;border-radius:2px;
   }
   body.edit-mode [data-editable]:focus{
-    outline:2px solid oklch(72% 0.14 45);
-    outline-offset:3px;border-radius:3px;
-    background:oklch(100% 0 0/.06);
+    outline:2px solid #f97316;outline-offset:2px;border-radius:2px;
+    background:rgba(249,115,22,.07);
   }
-  [data-editable]{caret-color:oklch(72% 0.14 45)}
-
-  body.edit-mode img[data-img-editable]{
+  [data-editable]{caret-color:#f97316}
+  body.edit-mode [data-img-edit]{
     cursor:pointer;position:relative;
   }
-  body.edit-mode img[data-img-editable]:hover{
-    outline:3px dashed oklch(72% 0.14 45);
-    outline-offset:3px;border-radius:3px;
-    filter:brightness(.85);
-  }
-  body.edit-mode .img-bg-editable:hover{
-    outline:3px dashed oklch(72% 0.14 45);
-    outline-offset:3px;border-radius:3px;
-    filter:brightness(.85);cursor:pointer;
-  }
-  .img-replace-badge{
+  body.edit-mode [data-img-edit]::after{
+    content:'📷 Changer';
     position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
-    background:oklch(18% 0.01 110 / .8);color:#fff;
-    padding:6px 14px;border-radius:20px;font-size:12px;pointer-events:none;
-    display:none;z-index:10;
+    background:rgba(0,0,0,.7);color:#fff;
+    padding:6px 14px;border-radius:20px;font-size:12px;font-family:Inter,sans-serif;
+    pointer-events:none;white-space:nowrap;opacity:0;transition:opacity .2s;
+    z-index:5;
   }
-  body.edit-mode .img-wrap:hover .img-replace-badge{display:block;}
+  body.edit-mode [data-img-edit]:hover::after{opacity:1;}
+  body.edit-mode [data-img-edit]:hover{filter:brightness(.8);}
 </style>
 
 <div id="edit-toolbar">
   <button id="btn-toggle-edit">✏️ Éditer</button>
-  <span id="edit-hint" style="display:none">Texte : cliquez pour modifier · Image : cliquez pour remplacer</span>
+  <span id="edit-hint" style="display:none">Texte : cliquez · Image : cliquez pour remplacer</span>
   <button id="btn-undo" style="display:none">↩ Annuler</button>
   <button id="btn-download" style="display:none">⬇️ Télécharger</button>
 </div>
@@ -1104,148 +1093,135 @@ ReactDOM.createRoot(document.getElementById('root')).render(<App />);
   const btnUndo   = document.getElementById('btn-undo');
   const btnDl     = document.getElementById('btn-download');
   const hint      = document.getElementById('edit-hint');
+  const root      = document.getElementById('root');
 
   let editMode = false;
-  let history  = [];
+  let snapshots = [];
 
-  /* ── Tag textes éditables ── */
-  function isOnlyTextOrInline(el){
-    const INLINE = new Set(['SPAN','EM','STRONG','B','I','BR','A','ABBR','TIME','MARK']);
-    for(const child of el.childNodes){
-      if(child.nodeType === 3) continue; // text node OK
-      if(child.nodeType === 1 && INLINE.has(child.tagName)) continue;
-      return false;
-    }
-    return true;
+  const BLOCK = new Set(['DIV','SECTION','ARTICLE','HEADER','FOOTER','MAIN','NAV',
+                          'ASIDE','UL','OL','TABLE','FIGURE','FORM','FIELDSET']);
+
+  function hasBlockChild(el){
+    for(const c of el.children) if(BLOCK.has(c.tagName)) return true;
+    return false;
   }
 
-  function tagEditables(){
-    const sel = 'h1,h2,h3,h4,h5,h6,p,span,a,li,blockquote,label,div.eyebrow,div.mono-eyebrow';
-    document.querySelectorAll('#root ' + sel).forEach(el => {
-      if(el.closest('[contenteditable="true"]')) return;
+  function tagAll(){
+    /* ── Textes ── */
+    root.querySelectorAll('*').forEach(el => {
       if(el.getAttribute('data-editable') !== null) return;
-      const txt = el.textContent.trim();
-      if(!txt) return;
-      if(isOnlyTextOrInline(el)){
+      if(el.closest('[contenteditable="true"]')) return;
+      if(!el.textContent.trim()) return;
+      if(hasBlockChild(el)) return;
+      const tag = el.tagName;
+      /* éléments texte acceptés */
+      if(['H1','H2','H3','H4','H5','H6','P','SPAN','A','LI','LABEL',
+          'FIGCAPTION','BLOCKQUOTE','DT','DD'].includes(tag)){
+        el.setAttribute('data-editable','');
+        return;
+      }
+      /* divs/sections feuille avec du texte court (<200 chars) */
+      if((tag==='DIV'||tag==='SPAN') && el.children.length===0 && el.textContent.trim().length<200){
         el.setAttribute('data-editable','');
       }
     });
-    /* aussi les éléments avec class mono-eyebrow */
-    document.querySelectorAll('#root .mono-eyebrow, #root .display').forEach(el => {
-      if(!el.getAttribute('data-editable') && el.textContent.trim()){
-        el.setAttribute('data-editable','');
+
+    /* ── Images ── */
+    root.querySelectorAll('*').forEach(el => {
+      if(el.getAttribute('data-img-edit') !== null) return;
+      /* <img> tag */
+      if(el.tagName === 'IMG'){
+        el.setAttribute('data-img-edit','img');
+        el.style.position = el.style.position || 'relative';
+        return;
+      }
+      /* background-image inline (React le met dans el.style) */
+      const bg = el.style.backgroundImage;
+      if(bg && bg !== 'none' && bg.startsWith('url(')){
+        el.setAttribute('data-img-edit','bg');
+        /* besoin de position:relative pour le ::after */
+        const pos = window.getComputedStyle(el).position;
+        if(pos === 'static') el.style.position = 'relative';
       }
     });
   }
 
-  /* ── Tag images éditables ── */
-  function tagImages(){
-    /* <img> directs */
-    document.querySelectorAll('#root img').forEach(img => {
-      if(img.getAttribute('data-img-editable') !== null) return;
-      img.setAttribute('data-img-editable','');
-      img.addEventListener('click', onImgClick);
-    });
-    /* background-image divs (.img, .hero .bg, etc.) */
-    document.querySelectorAll('#root .img, #root .hero .bg, #root .parallax-img, #root .gallery-item').forEach(el => {
-      if(el.getAttribute('data-img-editable') !== null) return;
-      const style = el.getAttribute('style') || '';
-      if(style.includes('background-image') || style.includes('url(')){
-        el.setAttribute('data-img-editable','bg');
-        el.addEventListener('click', onBgClick);
-      }
-    });
-  }
-
-  function onImgClick(e){
+  /* Délégation d'événement unique sur #root */
+  root.addEventListener('click', function(e){
     if(!editMode) return;
-    saveSnapshot();
-    const img = e.currentTarget;
+    const imgEl = e.target.closest('[data-img-edit]');
+    if(imgEl){
+      e.preventDefault(); e.stopPropagation();
+      saveSnap();
+      openFilePicker(imgEl);
+    }
+  }, true);
+
+  function openFilePicker(el){
     const input = document.createElement('input');
     input.type='file'; input.accept='image/*';
     input.onchange = () => {
-      const file = input.files[0];
-      if(!file) return;
+      const file = input.files[0]; if(!file) return;
       const reader = new FileReader();
-      reader.onload = (ev) => { img.src = ev.target.result; };
-      reader.readAsDataURL(file);
-    };
-    input.click();
-  }
-
-  function onBgClick(e){
-    if(!editMode) return;
-    saveSnapshot();
-    const div = e.currentTarget;
-    const input = document.createElement('input');
-    input.type='file'; input.accept='image/*';
-    input.onchange = () => {
-      const file = input.files[0];
-      if(!file) return;
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        div.style.backgroundImage = `url(${ev.target.result})`;
+      reader.onload = ev => {
+        if(el.getAttribute('data-img-edit') === 'img'){
+          el.src = ev.target.result;
+        } else {
+          el.style.backgroundImage = `url(${ev.target.result})`;
+        }
       };
       reader.readAsDataURL(file);
     };
     input.click();
   }
 
-  /* ── Activer / désactiver ── */
-  function toggleEdit(){
-    editMode = !editMode;
-    tagEditables();
-    tagImages();
-    document.body.classList.toggle('edit-mode', editMode);
-    btnToggle.textContent = editMode ? '✅ Terminer' : '✏️ Éditer';
-    btnToggle.classList.toggle('active', editMode);
-    hint.style.display   = editMode ? 'inline' : 'none';
-    btnUndo.style.display = editMode ? 'inline' : 'none';
-    btnDl.style.display   = editMode ? 'inline' : 'none';
+  function saveSnap(){
+    snapshots.push(root.innerHTML);
+    if(snapshots.length > 20) snapshots.shift();
+  }
 
-    document.querySelectorAll('[data-editable]').forEach(el => {
-      el.contentEditable = editMode ? 'true' : 'false';
-      if(editMode) el.addEventListener('focus', saveSnapshot, {once:true});
+  function applyEditMode(on){
+    root.querySelectorAll('[data-editable]').forEach(el => {
+      el.contentEditable = on ? 'true' : 'false';
+      if(on) el.addEventListener('focus', saveSnap, {once:true});
     });
   }
 
-  function saveSnapshot(){
-    history.push(document.getElementById('root').innerHTML);
-    if(history.length > 30) history.shift();
+  function toggleEdit(){
+    editMode = !editMode;
+    if(editMode) tagAll();
+    document.body.classList.toggle('edit-mode', editMode);
+    btnToggle.textContent = editMode ? '✅ Terminer' : '✏️ Éditer';
+    btnToggle.classList.toggle('active', editMode);
+    hint.style.display    = editMode ? 'inline' : 'none';
+    btnUndo.style.display  = editMode ? 'inline' : 'none';
+    btnDl.style.display    = editMode ? 'inline' : 'none';
+    applyEditMode(editMode);
   }
 
   btnToggle.addEventListener('click', toggleEdit);
 
   btnUndo.addEventListener('click', () => {
-    if(!history.length) return;
-    document.getElementById('root').innerHTML = history.pop();
-    tagEditables(); tagImages();
-    document.querySelectorAll('[data-editable]').forEach(el => {
-      el.contentEditable = 'true';
-      el.addEventListener('focus', saveSnapshot, {once:true});
-    });
+    if(!snapshots.length) return;
+    root.innerHTML = snapshots.pop();
+    tagAll(); applyEditMode(true);
   });
 
   btnDl.addEventListener('click', () => {
-    document.querySelectorAll('[data-editable]').forEach(el => {
-      el.contentEditable = 'false';
-      el.removeAttribute('data-editable');
+    /* nettoyage avant export */
+    root.querySelectorAll('[data-editable]').forEach(el => {
+      el.contentEditable='false'; el.removeAttribute('data-editable');
     });
-    document.querySelectorAll('[data-img-editable]').forEach(el => el.removeAttribute('data-img-editable'));
+    root.querySelectorAll('[data-img-edit]').forEach(el => el.removeAttribute('data-img-edit'));
     document.body.classList.remove('edit-mode');
 
     const html = '<!doctype html>\n' + document.documentElement.outerHTML;
 
     setTimeout(()=>{
-      tagEditables(); tagImages();
-      document.body.classList.add('edit-mode');
-      document.querySelectorAll('[data-editable]').forEach(el=>{
-        el.contentEditable='true';
-        el.addEventListener('focus',saveSnapshot,{once:true});
-      });
-    }, 100);
+      tagAll(); document.body.classList.add('edit-mode'); applyEditMode(true);
+    }, 80);
 
-    const blob = new Blob([html], {type:'text/html'});
+    const blob = new Blob([html],{type:'text/html'});
     const a = document.createElement('a');
     a.href = URL.createObjectURL(blob);
     a.download = 'Saveurs-du-Brusc.html';
